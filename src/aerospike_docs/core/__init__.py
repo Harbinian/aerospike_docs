@@ -1,0 +1,1 @@
+"""aerospike_docs.core sub-package."""

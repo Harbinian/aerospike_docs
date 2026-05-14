@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aerospike_docs"
+version = "0.1.0"
+description = "Aerospace document governance SDK — terminology mining, knowledge graphs, RAG retrieval, and compliance auditing"
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+dependencies = [
+    "pydantic>=2",
+    "pyyaml>=6",
+    "chromadb>=0.5",
+    "requests>=2",
+    "pandas>=2",
+    "python-docx>=1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
