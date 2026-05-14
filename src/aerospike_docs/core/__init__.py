@@ -13,7 +13,7 @@ from .exceptions import (
 from .schemas import ServiceResponse
 from .config import ApiConfig, ConversionConfig, DomainConfig, MINIMAX_MODEL_NAME
 from .logging import setup_logging, get_logger, setup_subprocess_logging, get_subprocess_logger, set_log_level, ServiceLogger
-from .utils import validate_path
+from .utils import validate_path, clean_text, write_file_with_utf8
 
 __all__ = [
     # exceptions
@@ -41,4 +41,6 @@ __all__ = [
     "ServiceLogger",
     # utils
     "validate_path",
+    "clean_text",
+    "write_file_with_utf8",
 ]
