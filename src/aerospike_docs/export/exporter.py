@@ -11,8 +11,14 @@ import yaml
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List, Tuple, Optional, Callable
+from typing import Dict, Any, List, Optional
 from collections import defaultdict
+
+from aerospike_docs.core.logging import get_logger
+from aerospike_docs.validation import GlossaryValidator
+
+
+logger = get_logger(__name__)
 
 
 class DataExporter:
@@ -28,12 +34,12 @@ class DataExporter:
         Args:
             project_root: Root directory of the project
             glossary_validator_class: Optional GlossaryValidator class for
-                validation. If not provided, uses a simple file-exists check.
+                validation. If not provided, uses aerospike_docs.validation.
         """
-        self.project_root = project_root or Path.cwd()
+        self.project_root = Path(project_root) if project_root is not None else Path.cwd()
         self.glossary_path = self.project_root / "glossary.yaml"
         self.dist_dir = self.project_root / "dist"
-        self._validator_class = glossary_validator_class
+        self._validator_class = glossary_validator_class or GlossaryValidator
 
     def load_glossary(self) -> dict:
         """Load glossary.yaml."""
@@ -46,35 +52,14 @@ class DataExporter:
         Returns:
             True if validation passes
         """
-        # Try injected validator first
-        if self._validator_class is not None:
-            try:
-                validator = self._validator_class(str(self.glossary_path))
-                if hasattr(validator, 'load_file') and not validator.load_file():
-                    return False
-                result = validator.validate()
-                return result.passed
-            except Exception:
-                pass
-
-        # Try importing from Norms validation service (backward compatibility)
         try:
-            from services.validation.validator import GlossaryValidator
-            validator = GlossaryValidator(str(self.glossary_path))
-            if not validator.load_file():
+            validator = self._validator_class(str(self.glossary_path))
+            if hasattr(validator, 'load_file') and not validator.load_file():
                 return False
             result = validator.validate()
             return result.passed
-        except ImportError:
-            pass
-
-        # Fallback: basic file existence and parse check
-        if not self.glossary_path.exists():
-            return False
-        try:
-            self.load_glossary()
-            return True
-        except Exception:
+        except Exception as exc:
+            logger.error(f"Glossary validation failed: {exc}")
             return False
 
     def slugify(self, text: str) -> str:

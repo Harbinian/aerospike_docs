@@ -106,6 +106,13 @@ class MinimaxEmbedder:
         embeddings = self.embed_texts([query], embed_type="query")
         return embeddings[0] if embeddings else None
 
+    def embed(self, documents: List[str]) -> Optional[List[List[float]]]:
+        """Generate database embeddings for document chunks.
+
+        This is a public convenience alias used by README examples.
+        """
+        return self.embed_documents(documents)
+
     def embed_documents(self, documents: List[str]) -> Optional[List[List[float]]]:
         """Generate embeddings for document chunks (database building).
 

@@ -274,13 +274,16 @@ class TermMiner:
     and reuse. Maintains anti-hallucination validation.
     """
 
-    def __init__(self, docs_dir: str = "docs", output_file: str = "term_candidates.csv",
+    def __init__(self, api_config: ApiConfig | str | Path | None = None, *,
+                 docs_dir: str | Path = "docs", output_file: str = "term_candidates.csv",
                  output_format: str = "csv", resume: bool = False,
                  chunk_size: int = 8000, chunk_overlap: int = 1000,
                  max_retries: int = MAX_RETRIES):
         """Initialize TermMiner.
 
         Args:
+            api_config: Optional ApiConfig. For backward compatibility, a str or
+                Path value is treated as docs_dir.
             docs_dir: Directory containing documents to mine
             output_file: Output file path
             output_format: 'csv' or 'yaml'
@@ -289,7 +292,14 @@ class TermMiner:
             chunk_overlap: Overlap between chunks
             max_retries: Max API retry attempts
         """
-        self.docs_dir = Path(docs_dir)
+        if isinstance(api_config, ApiConfig):
+            self.api_config = api_config
+            resolved_docs_dir = docs_dir
+        else:
+            self.api_config = ApiConfig()
+            resolved_docs_dir = api_config if api_config is not None else docs_dir
+
+        self.docs_dir = Path(resolved_docs_dir)
         self.output_file = output_file
         self.output_format = output_format.lower()
         self.mcp_available = MCP_AVAILABLE

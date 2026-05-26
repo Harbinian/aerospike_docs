@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Data Service - domain service for file I/O operations."""
+"""
+Data Service — domain service for file I/O operations.
+
+Encapsulates all file read/write operations to keep UI layer clean.
+Follows the "Fat Service" principle — all data access happens here.
+"""
 
 import json
 from pathlib import Path
@@ -14,16 +19,36 @@ logger = get_logger(__name__)
 
 
 class DataService:
-    """Encapsulates all file I/O operations."""
+    """Encapsulates all file I/O operations for aerospike_docs."""
 
     def __init__(self, project_root: Path, glossary_file: Optional[Path] = None):
-        self.project_root = project_root
-        self.glossary_file = glossary_file or (project_root / "glossary.yaml")
-        self.outputs_dir = project_root / "outputs"
-        self.dist_dir = project_root / "dist"
+        self.project_root = Path(project_root)
+        self.glossary_file = glossary_file or (self.project_root / "glossary.yaml")
+        self.outputs_dir = self.project_root / "outputs"
+        self.dist_dir = self.project_root / "dist"
 
-    # CSV
+    def _get_report_files(self) -> Dict[str, Path]:
+        """Get all report file paths."""
+        return {
+            'conversion': self.project_root / 'conversion_audit.csv',
+            'terms': self.project_root / 'term_candidates.csv',
+            'health': self.project_root / 'check_orphans.json',
+            'graph': self.project_root / 'knowledge_graph.html',
+            'glossary': self.glossary_file,
+            'orphan_report': self.dist_dir / 'check_orphans.json',
+            'compliance_audit': self.dist_dir / 'compliance_actor_audit.md',
+            'compliance_report': self.dist_dir / 'compliance_audit_report.md',
+            'alias_suggestions': self.dist_dir / 'alias_suggestions.csv',
+            'lifecycle_audit': self.dist_dir / 'reports' / 'lifecycle_elements_audit.md',
+            'sql_lineage': self.dist_dir / 'reports' / 'sql_lineage_report.md',
+        }
+
+    # =========================================================================
+    # CSV Operations
+    # =========================================================================
+
     def load_csv(self, filepath: Path) -> pd.DataFrame:
+        """Load CSV file with proper error handling."""
         try:
             return pd.read_csv(filepath, encoding='utf-8-sig')
         except FileNotFoundError:
@@ -34,6 +59,7 @@ class DataService:
             return pd.DataFrame()
 
     def save_csv(self, df: pd.DataFrame, filepath: Path) -> bool:
+        """Save DataFrame to CSV."""
         try:
             df.to_csv(filepath, index=False, encoding='utf-8-sig')
             return True
@@ -42,19 +68,23 @@ class DataService:
             return False
 
     def load_conversion_report(self) -> pd.DataFrame:
-        return self.load_csv(self.project_root / 'conversion_audit.csv')
+        return self.load_csv(self._get_report_files()['conversion'])
 
     def load_terms_candidates(self) -> pd.DataFrame:
-        return self.load_csv(self.project_root / 'term_candidates.csv')
+        return self.load_csv(self._get_report_files()['terms'])
 
     def load_alias_suggestions(self) -> pd.DataFrame:
-        return self.load_csv(self.dist_dir / 'alias_suggestions.csv')
+        return self.load_csv(self._get_report_files()['alias_suggestions'])
 
     def save_terms_candidates(self, df: pd.DataFrame) -> bool:
-        return self.save_csv(df, self.project_root / 'term_candidates.csv')
+        return self.save_csv(df, self._get_report_files()['terms'])
 
-    # YAML
+    # =========================================================================
+    # YAML Operations
+    # =========================================================================
+
     def load_yaml(self, filepath: Path) -> Dict[str, Any]:
+        """Load YAML file with proper error handling."""
         if not filepath or not filepath.exists():
             logger.warning(f"YAML file not found: {filepath}")
             return {}
@@ -67,6 +97,7 @@ class DataService:
             return {}
 
     def save_yaml(self, data: Dict[str, Any], filepath: Path) -> bool:
+        """Save data to YAML file."""
         try:
             filepath.parent.mkdir(parents=True, exist_ok=True)
             with open(filepath, 'w', encoding='utf-8') as f:
@@ -77,13 +108,17 @@ class DataService:
             return False
 
     def load_glossary(self) -> Dict[str, Any]:
-        return self.load_yaml(self.glossary_file)
+        return self.load_yaml(self._get_report_files()['glossary'])
 
     def save_glossary(self, data: Dict[str, Any]) -> bool:
-        return self.save_yaml(data, self.glossary_file)
+        return self.save_yaml(data, self._get_report_files()['glossary'])
 
-    # JSON
+    # =========================================================================
+    # JSON Operations
+    # =========================================================================
+
     def load_json(self, filepath: Path) -> Dict[str, Any]:
+        """Load JSON file with proper error handling."""
         if not filepath or not filepath.exists():
             logger.warning(f"JSON file not found: {filepath}")
             return {}
@@ -95,10 +130,14 @@ class DataService:
             return {}
 
     def load_orphan_report(self) -> Dict[str, Any]:
-        return self.load_json(self.dist_dir / 'check_orphans.json')
+        return self.load_json(self._get_report_files()['orphan_report'])
 
-    # Markdown
+    # =========================================================================
+    # Markdown Operations
+    # =========================================================================
+
     def load_markdown(self, filepath: Path) -> str:
+        """Load markdown file with proper error handling."""
         if not filepath or not filepath.exists():
             logger.warning(f"Markdown file not found: {filepath}")
             return ""
@@ -110,16 +149,20 @@ class DataService:
             return ""
 
     def load_compliance_audit(self) -> str:
-        return self.load_markdown(self.dist_dir / 'compliance_actor_audit.md')
+        return self.load_markdown(self._get_report_files()['compliance_audit'])
 
     def load_lifecycle_audit(self) -> str:
-        return self.load_markdown(self.dist_dir / 'reports' / 'lifecycle_elements_audit.md')
+        return self.load_markdown(self._get_report_files()['lifecycle_audit'])
 
     def load_sql_lineage(self) -> str:
-        return self.load_markdown(self.dist_dir / 'reports' / 'sql_lineage_report.md')
+        return self.load_markdown(self._get_report_files()['sql_lineage'])
 
-    # HTML
+    # =========================================================================
+    # HTML Operations
+    # =========================================================================
+
     def load_html(self, filepath: Path) -> str:
+        """Load HTML file with proper error handling."""
         if not filepath or not filepath.exists():
             logger.warning(f"HTML file not found: {filepath}")
             return ""
@@ -131,14 +174,18 @@ class DataService:
             return ""
 
     def load_knowledge_graph(self) -> str:
-        return self.load_html(self.project_root / 'knowledge_graph.html')
+        return self.load_html(self._get_report_files()['graph'])
 
-    # Checks
+    # =========================================================================
+    # File Existence Checks
+    # =========================================================================
+
     def file_exists(self, filepath: Path) -> bool:
+        """Check if file exists."""
         return filepath and filepath.exists()
 
     def graph_exists(self) -> bool:
-        return self.file_exists(self.project_root / 'knowledge_graph.html')
+        return self.file_exists(self._get_report_files()['graph'])
 
     def glossary_exists(self) -> bool:
-        return self.file_exists(self.glossary_file)
+        return self.file_exists(self._get_report_files()['glossary'])
