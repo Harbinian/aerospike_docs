@@ -53,15 +53,41 @@ def code_patterns(prefixes=None):
         "form": r"\s*(\d{4}-\d+)",
         "standard": r"\s*(\d{4})",
     }
-    return {values[key]: re.escape(values[key]) + suffix for key, suffix in suffixes.items()}
+    return {prefix: re.escape(prefix) + suffix
+            for key, suffix in suffixes.items() for prefix in prefix_options(key, values)}
+
+
+def prefix_options(category, prefixes=None):
+    values = prefixes or PUBLIC_PREFIXES
+    return tuple(dict.fromkeys((values[category], PUBLIC_PREFIXES[category])))
+
+
+def identify_prefix(value, prefixes=None):
+    candidates = [(category, prefix) for category in PUBLIC_PREFIXES
+                  for prefix in prefix_options(category, prefixes)]
+    for category, prefix in sorted(candidates, key=lambda item: len(item[1]), reverse=True):
+        if value.upper().startswith(prefix.upper()):
+            return category, prefix
+    return None, ""
+
+
+def matches_prefix(value, category, prefixes=None):
+    return any(value.upper().startswith(prefix.upper()) for prefix in prefix_options(category, prefixes))
+
+
+def contains_prefix(value, category, prefixes=None):
+    return any(prefix.casefold() in value.casefold() for prefix in prefix_options(category, prefixes))
 
 
 def form_id_patterns(prefixes=None):
     """Build linter rules directly, avoiding substitutions inside other aliases."""
     values = prefixes or PUBLIC_PREFIXES
-    document_types = "|".join(re.escape(values[key]) for key in ("policy", "procedure", "instruction"))
+    document_types = "|".join(re.escape(prefix) for key in ("policy", "procedure", "instruction")
+                              for prefix in prefix_options(key, values))
+    forms = "|".join(re.escape(prefix) for prefix in prefix_options("form", values))
+    standards = "|".join(re.escape(prefix) for prefix in prefix_options("standard", values))
     return [
-        r"\b(" + re.escape(values["form"]) + r"\s*\d{4}[-\s]?\d{2}[A-Z]?)\b",
+        r"\b((?:" + forms + r")\s*\d{4}[-\s]?\d{2}[A-Z]?)\b",
         r"\b((?:" + document_types + r")\d{4,6}[-\d]*)\b",
-        r"\b(" + re.escape(values["standard"]) + r"\d{4}[A-Z]?)\b",
+        r"\b((?:" + standards + r")\d{4}[A-Z]?)\b",
     ]

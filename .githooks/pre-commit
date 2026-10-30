@@ -1,2 +1,3 @@
 #!/bin/sh
-exec python scripts/check-anonymization.py --staged
+python scripts/check-anonymization.py --staged || exit $?
+exec python scripts/check-anonymization-history.py

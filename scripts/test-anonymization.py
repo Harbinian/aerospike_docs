@@ -10,6 +10,9 @@ SCRIPT = Path(__file__).with_name("check-anonymization.py")
 SPEC = importlib.util.spec_from_file_location("anonymization_check", SCRIPT)
 CHECK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECK)
+HISTORY_SPEC = importlib.util.spec_from_file_location("repository_history_check", SCRIPT.with_name("check-anonymization-history.py"))
+HISTORY = importlib.util.module_from_spec(HISTORY_SPEC)
+HISTORY_SPEC.loader.exec_module(HISTORY)
 
 
 class AnonymizationTests(unittest.TestCase):
@@ -56,7 +59,35 @@ class AnonymizationTests(unittest.TestCase):
     def test_json_escapes_and_utf16_are_checked(self):
         self.write("escaped.json", '"\\u0050rivateExample"')
         (self.root / "wide.txt").write_bytes("PrivateExample".encode("utf-16"))
-        self.assertEqual(len(CHECK.run(self.root)["violations"]), 2)
+        self.write("encoded.txt", "%50rivateExample")
+        self.assertEqual(len(CHECK.run(self.root)["violations"]), 3)
+
+    def commit(self, message):
+        self.stage()
+        subprocess.run(["git", "-c", "user.name=Anonymous Tester",
+                        "-c", "user.email=anonymous@example.invalid",
+                        "commit", "--no-gpg-sign", "-qm", message],
+                       cwd=self.root, check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+
+    def test_clean_head_does_not_hide_sensitive_historical_content(self):
+        self.write("sample.txt", "PrivateExample")
+        self.commit("Add fixture")
+        self.write("sample.txt", "Example company")
+        self.commit("Anonymize fixture")
+        self.assertTrue(CHECK.run(self.root, staged=True)["valid"])
+        result = HISTORY.check_history(self.root)
+        self.assertFalse(result["valid"])
+        self.assertNotIn("PrivateExample", json.dumps(result))
+
+    def test_deleted_sensitive_filename_is_still_checked_in_history(self):
+        self.write("PrivateExample.txt", "safe")
+        self.commit("Add fixture")
+        (self.root / "PrivateExample.txt").unlink()
+        self.write("public.txt", "safe")
+        self.commit("Replace fixture")
+        self.assertTrue(CHECK.run(self.root, staged=True)["valid"])
+        self.assertIn("historical_path", json.dumps(HISTORY.check_history(self.root)))
 
     def test_missing_policy_blocks_check(self):
         (self.root / CHECK.POLICY_NAME).unlink()

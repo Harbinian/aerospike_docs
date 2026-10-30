@@ -9,7 +9,7 @@ Encapsulates logic from:
 import json
 import re
 import yaml
-from aerospike_docs.core.document_codes import code_patterns, load_doc_prefixes
+from aerospike_docs.core.document_codes import PUBLIC_PREFIXES, code_patterns, contains_prefix, identify_prefix, load_doc_prefixes, matches_prefix, prefix_options
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -213,12 +213,12 @@ class GraphBuilder:
                             cites.append(normalized)
 
             elif in_tables_section:
-                form_prefix = self.doc_prefixes['form']
-                form_matches = re.findall(re.escape(form_prefix) + r'\s*(\d{4}-\d+)', line_stripped, re.IGNORECASE)
-                for match in form_matches:
-                    normalized = self.normalize_doc_code(f"{form_prefix}{match}")
-                    if normalized not in forms:
-                        forms.append(normalized)
+                for form_prefix in prefix_options('form', self.doc_prefixes):
+                    form_matches = re.findall(re.escape(form_prefix) + r'\s*(\d{4}-\d+)', line_stripped, re.IGNORECASE)
+                    for match in form_matches:
+                        normalized = self.normalize_doc_code(f"{form_prefix}{match}")
+                        if normalized not in forms:
+                            forms.append(normalized)
 
         return {'cites': cites, 'forms': forms}
 
@@ -429,7 +429,7 @@ class GraphBuilder:
             code_suffix = '140' + doc_code_match.group(1)
             phase = DOC_CODE_TO_PHASE.get(code_suffix, '')
 
-        if doc_name.upper().startswith(self.doc_prefixes['policy']):
+        if matches_prefix(doc_name, 'policy', self.doc_prefixes):
             phase = '策划,申请,设计,制造,验收,使用,维护,优化'
 
         # D5-2: Apply aliases normalization to entities before returning
@@ -468,13 +468,13 @@ class GraphBuilder:
     def infer_doc_level(self, doc_name: str, title: str = "") -> int:
         """Infer document level from filename patterns."""
         doc_name_upper = doc_name.upper()
-        if doc_name_upper.startswith(self.doc_prefixes['policy']):
+        if matches_prefix(doc_name_upper, 'policy', self.doc_prefixes):
             return 0
-        elif doc_name_upper.startswith(self.doc_prefixes['procedure']):
+        elif matches_prefix(doc_name_upper, 'procedure', self.doc_prefixes):
             return 1
-        elif doc_name_upper.startswith(self.doc_prefixes['instruction']):
+        elif matches_prefix(doc_name_upper, 'instruction', self.doc_prefixes):
             return 2
-        elif doc_name_upper.startswith(self.doc_prefixes['form']):
+        elif matches_prefix(doc_name_upper, 'form', self.doc_prefixes):
             return 3
 
         search_text = (doc_name + " " + title).lower()
@@ -499,47 +499,39 @@ class GraphBuilder:
 
     def parse_doc_code(self, doc_name: str) -> str:
         """Extract document code from filename."""
-        prefixes = '|'.join(re.escape(value) for value in sorted(self.doc_prefixes.values(), key=len, reverse=True))
+        prefixes = '|'.join(re.escape(value) for value in sorted({prefix for category in self.doc_prefixes for prefix in prefix_options(category, self.doc_prefixes)}, key=len, reverse=True))
         match = re.match(r'^(' + prefixes + r')(\d{4,8})', doc_name, re.IGNORECASE)
         if match:
             return match.group(1).upper() + match.group(2)
         return ''
 
     def find_best_parent_by_code(self, doc_code: str, all_doc_codes: Set) -> str:
-        """Find best parent document based on coding rules."""
+        """Find a parent in the input namespace, then its configured public alias."""
         if not doc_code:
             return ''
-
-        base_code = doc_code
-        if re.match(r'.*-\d{2}$', doc_code):
-            base_code = doc_code.rsplit('-', 1)[0]
-
-        candidates = []
-
-        if doc_code.startswith(self.doc_prefixes['instruction']):
-            procedure_code = self.doc_prefixes['procedure'] + doc_code[len(self.doc_prefixes['instruction']):]
-            candidates.append((procedure_code, 'direct'))
-            if base_code != doc_code:
-                procedure_base = self.doc_prefixes['procedure'] + base_code[len(self.doc_prefixes['instruction']):]
-                candidates.append((procedure_base, 'base'))
-
-        elif doc_code.startswith(self.doc_prefixes['procedure']):
-            offset = len(self.doc_prefixes['procedure'])
-            if len(doc_code) >= offset + 2:
-                policy_code = self.doc_prefixes['policy'] + doc_code[offset:offset + 2] + '07'
-                candidates.append((policy_code, 'lift'))
-                if len(doc_code) >= offset + 3:
-                    policy_code2 = self.doc_prefixes['policy'] + doc_code[offset:offset + 3] + '07'
-                    candidates.append((policy_code2, 'lift_4dig'))
-
-        elif doc_code.startswith(self.doc_prefixes['policy']):
+        category, matched = identify_prefix(doc_code, self.doc_prefixes)
+        if category == 'policy':
             return 'ROOT_SYSTEM'
-
-        for candidate, rule_type in candidates:
-            if candidate in all_doc_codes:
-                return candidate
-
-        return ''
+        if category not in ('instruction', 'procedure'):
+            return ''
+        target = 'procedure' if category == 'instruction' else 'policy'
+        choices = list(prefix_options(target, self.doc_prefixes))
+        if matched == PUBLIC_PREFIXES[category]:
+            choices.sort(key=lambda prefix: prefix != PUBLIC_PREFIXES[target])
+        suffix = doc_code[len(matched):]
+        candidates = []
+        if category == 'instruction':
+            for prefix in choices:
+                candidates.append(prefix + suffix)
+                if re.match(r'.*-\d{2}$', suffix):
+                    candidates.append(prefix + suffix.rsplit('-', 1)[0])
+        else:
+            for prefix in choices:
+                if len(suffix) >= 2:
+                    candidates.append(prefix + suffix[:2] + '07')
+                if len(suffix) >= 3:
+                    candidates.append(prefix + suffix[:3] + '07')
+        return next((candidate for candidate in candidates if candidate in all_doc_codes), '')
 
     def build_heuristic_links(self, mappings: List[Dict]) -> Dict:
         """Build hierarchical tree structure using document code-based heuristics."""
@@ -591,7 +583,7 @@ class GraphBuilder:
             for rel in related_docs:
                 if rel.get('type') in ['Cites', 'Parent'] and rel.get('direction') == 'forward':
                     target = rel.get('target', '')
-                    if any(x in target.upper() for x in [self.doc_prefixes['policy'], self.doc_prefixes['procedure']]):
+                    if (contains_prefix(target, 'policy', self.doc_prefixes) or contains_prefix(target, 'procedure', self.doc_prefixes)):
                         has_explicit_parent = True
                         parent_links[doc_name] = target
                         link_types[doc_name] = 'explicit'

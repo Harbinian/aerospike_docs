@@ -54,6 +54,29 @@ def test_linter_uses_private_form_prefix(tmp_path, monkeypatch):
     assert any(re.search(pattern, "QX140701") for pattern in service.form_patterns)
 
 
+def test_public_and_private_codes_coexist_with_a_private_profile(tmp_path, monkeypatch):
+    monkeypatch.delenv("AEROSPIKE_DOC_PROFILE", raising=False)
+    private_profile(tmp_path)
+    service = builder(tmp_path)
+    for prefix, level in (("POL", 0), ("PROC", 1), ("WORK", 2), ("FORM", 3),
+                          ("PX", 0), ("QX", 1), ("RX", 2), ("TX", 3)):
+        assert service.infer_doc_level(prefix + "140701") == level
+        assert service.parse_doc_code(prefix + "140701_example") == prefix + "140701"
+    parents = {"PROC140701", "QX140701"}
+    assert service.find_best_parent_by_code("WORK140701", parents) == "PROC140701"
+    assert service.find_best_parent_by_code("RX140701", parents) == "QX140701"
+    assert service.find_best_parent_by_code("WORK140701", {"QX140701"}) == "QX140701"
+    assert service.find_best_parent_by_code("PROC140701", {"PX1407"}) == "PX1407"
+    references = service.extract_official_references(
+        "1 规范性引用文件\nPOL1407\nPX1407\nPROC140701\nQX140701\n"
+        "2 表格\nFORM1407-01\nTX1407-01\n")
+    assert set(references["cites"]) == {"POL1407", "PX1407", "PROC140701", "QX140701"}
+    assert set(references["forms"]) == {"FORM1407-01", "TX1407-01"}
+    linter = MarkdownLinter(project_root=tmp_path)
+    for code in ("FORM1407-01", "TX1407-01", "PROC140701", "QX140701"):
+        assert any(re.search(pattern, code) for pattern in linter.form_patterns)
+
+
 @pytest.mark.parametrize("private", [False, True])
 def test_citations_and_form_references_use_the_same_profile(tmp_path, monkeypatch, private):
     monkeypatch.delenv("AEROSPIKE_DOC_PROFILE", raising=False)

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from urllib.parse import unquote
 
 POLICY_NAME = "ANONYMIZATION.local.json"
 
@@ -90,7 +91,7 @@ def inspect(name, data, rules, approved):
         if hashlib.sha256(data).hexdigest() not in approved:
             violations.add("BINARY_REVIEW_REQUIRED")
         return sorted(violations)
-    texts = [text]
+    texts = [text, unquote(text)]
     if name.lower().endswith(".json"):
         try:
             texts.append(json.dumps(json.loads(text), ensure_ascii=False))

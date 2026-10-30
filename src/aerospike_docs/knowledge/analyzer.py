@@ -10,7 +10,7 @@ import json
 import re
 import time
 import os
-from aerospike_docs.core.document_codes import load_doc_prefixes
+from aerospike_docs.core.document_codes import contains_prefix, load_doc_prefixes, matches_prefix
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
@@ -242,7 +242,7 @@ class KnowledgeAnalyzer:
         main_docs = []
         if self.outputs_dir.exists():
             for item in self.outputs_dir.iterdir():
-                if item.is_dir() and item.name.upper().startswith(self.doc_prefixes['procedure']):
+                if item.is_dir() and matches_prefix(item.name, 'procedure', self.doc_prefixes):
                     md_files = list(item.glob("*.md"))
                     if md_files:
                         main_docs.append(md_files[0])
@@ -369,7 +369,7 @@ class KnowledgeAnalyzer:
             if doc_type in ['Doc_Form', 'Doc_Standard', 'Doc_Procedure']:
                 doc_path = item.get('doc_path', '')
                 doc_name = item.get('doc_name', '')
-                if self.doc_prefixes['form'].casefold() in doc_name.casefold() or '附件' in doc_name:
+                if contains_prefix(doc_name, 'form', self.doc_prefixes) or '附件' in doc_name:
                     if doc_path:
                         doc_path_normalized = doc_path.replace('\\', '/')
                         if 'english_backup' not in doc_path_normalized:
@@ -386,7 +386,7 @@ class KnowledgeAnalyzer:
                     attachments_subdir = subdir / "attachments"
                     if attachments_subdir.exists():
                         for md_file in attachments_subdir.glob("*.md"):
-                            if self.doc_prefixes['form'].casefold() in md_file.name.casefold() or '附件' in md_file.name:
+                            if contains_prefix(md_file.name, 'form', self.doc_prefixes) or '附件' in md_file.name:
                                 targets.append({
                                     'doc_name': md_file.name,
                                     'doc_path': str(md_file),

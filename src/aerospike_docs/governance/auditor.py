@@ -2,7 +2,7 @@
 """Compliance Auditor Domain Service for role accountability audit."""
 
 import json
-from aerospike_docs.core.document_codes import load_doc_prefixes
+from aerospike_docs.core.document_codes import load_doc_prefixes, matches_prefix
 import re
 import time
 import requests
@@ -449,7 +449,7 @@ class ComplianceAuditor:
                 docs = []
                 if self.outputs_dir.exists():
                     for d in self.outputs_dir.iterdir():
-                        if d.is_dir() and d.stem.upper().startswith((self.doc_prefixes['procedure'], self.doc_prefixes['instruction'])):
+                        if d.is_dir() and (matches_prefix(d.stem, 'procedure', self.doc_prefixes) or matches_prefix(d.stem, 'instruction', self.doc_prefixes)):
                             docs.append(d.stem)
 
         print(f"\n[1/3] Found {len(docs)} documents to audit")
