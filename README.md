@@ -250,3 +250,9 @@ from aerospike_docs.conversion import PipelineConverter
 ```
 
 这样现有的 `from services.conversion import PipelineConverter` 导入方式继续有效，而规范实现位于 `aerospike_docs` 库中。
+
+## 共享内容脱敏
+
+本库共享内容按 [仓库脱敏约束](ANONYMIZATION.md) 使用匿名称谓、通用代号和稳定别名。真实词表与映射保存在被忽略的本地配置中。首次克隆需取得本地配置，再运行 python scripts/check-anonymization.py，并通过 git config --local core.hooksPath .githooks 启用提交检查。脱敏副本不能当作逐字原文或真实物理标识直接执行；本次内容更新不清除 Git 历史。
+
+文档编号默认使用通用代号。原有编号可通过被忽略的本地配置中 prefix_aliases 字段兼容，也可用 AEROSPIKE_DOC_PROFILE 指向受限配置；值为“本地前缀到公开代号”的映射。配置缺失时使用公开示例代号；显式配置不可读或格式错误时直接报错。编号分类、引用提取、父级关联、审核目录筛选及表单校验使用同一配置，不把真实前缀写进代码或测试。

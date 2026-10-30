@@ -2,6 +2,7 @@
 """Compliance Auditor Domain Service for role accountability audit."""
 
 import json
+from aerospike_docs.core.document_codes import load_doc_prefixes
 import re
 import time
 import requests
@@ -172,6 +173,7 @@ class ComplianceAuditor:
 
     def __init__(self, project_root: Path = None):
         self.project_root = project_root or Path.cwd()
+        self.doc_prefixes = load_doc_prefixes(self.project_root)
         self.outputs_dir = self.project_root / "outputs"
         self.flowchart_path = self.project_root / "dist" / "flowchart_extractions.json"
         self.dist_dir = self.project_root / "dist"
@@ -447,7 +449,7 @@ class ComplianceAuditor:
                 docs = []
                 if self.outputs_dir.exists():
                     for d in self.outputs_dir.iterdir():
-                        if d.is_dir() and d.stem.startswith(('PROC', 'WORK')):
+                        if d.is_dir() and d.stem.upper().startswith((self.doc_prefixes['procedure'], self.doc_prefixes['instruction'])):
                             docs.append(d.stem)
 
         print(f"\n[1/3] Found {len(docs)} documents to audit")

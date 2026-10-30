@@ -14,6 +14,7 @@ Exit codes:
 """
 
 import re
+from aerospike_docs.core.document_codes import form_id_patterns, load_doc_prefixes
 import yaml
 from pathlib import Path
 from typing import List, Tuple, Dict, Any
@@ -55,11 +56,7 @@ class MarkdownLinter:
     ]
 
     # Form ID patterns
-    FORM_PATTERNS = [
-        r'\b(FORM\s*\d{4}[-\s]?\d{2}[A-Z]?)\b',
-        r'\b(GL[BCG]\d{4,6}[-\d]*)\b',
-        r'\b(SR\d{4}[A-Z]?)\b',
-    ]
+    FORM_PATTERNS = form_id_patterns()
 
     # Deliverable keywords
     DELIVERABLE_KEYWORDS = ['表格', '表单', '交付物', '记录', '附件']
@@ -67,7 +64,7 @@ class MarkdownLinter:
     # Required frontmatter fields
     REQUIRED_FIELDS = ['id', 'title', 'version', 'department']
 
-    def __init__(self, strict_mode: bool = False):
+    def __init__(self, strict_mode: bool = False, project_root: Path = None):
         """
         Initialize Markdown Linter.
 
@@ -75,6 +72,8 @@ class MarkdownLinter:
             strict_mode: If True, apply stricter validation rules
         """
         self.strict_mode = strict_mode
+        prefixes = load_doc_prefixes(project_root)
+        self.form_patterns = form_id_patterns(prefixes)
 
     def validate_file(self, file_path: str) -> Tuple[bool, List[ValidationError]]:
         """
@@ -212,7 +211,7 @@ class MarkdownLinter:
                 continue
 
             # Check for form IDs not in bold
-            for pattern in self.FORM_PATTERNS:
+            for pattern in self.form_patterns:
                 matches = re.finditer(pattern, line, re.IGNORECASE)
                 for match in matches:
                     # Check if already wrapped in **

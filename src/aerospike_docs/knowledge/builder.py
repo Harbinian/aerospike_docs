@@ -9,6 +9,7 @@ Encapsulates logic from:
 import json
 import re
 import yaml
+from aerospike_docs.core.document_codes import code_patterns, load_doc_prefixes
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -26,13 +27,7 @@ LEVEL_PATTERNS = {
     3: ['表单', '记录', '卡', '单', '清单', '台账', '登记表']
 }
 
-DOC_CODE_PATTERNS = {
-    'POL': r'POL\s*(\d{4})',
-    'PROC': r'PROC\s*(\d{4,6})',
-    'WORK': r'WORK\s*(\d{4}\d*-?\d*)',
-    'FORM': r'FORM\s*(\d{4}-\d+)',
-    'SR': r'SR\s*(\d{4})',
-}
+DOC_CODE_PATTERNS = code_patterns()
 
 
 class GraphBuilder:
@@ -48,6 +43,7 @@ class GraphBuilder:
             project_root: Root directory of the project
         """
         self.project_root = project_root or Path.cwd()
+        self.doc_prefixes = load_doc_prefixes(self.project_root)
 
         # STRICT: Only read from refined_outputs (Fail Fast if not exists)
         self.outputs_dir = self.project_root / "refined_outputs"
@@ -208,7 +204,7 @@ class GraphBuilder:
                 continue
 
             if in_references_section:
-                for doc_type, pattern in DOC_CODE_PATTERNS.items():
+                for doc_type, pattern in code_patterns(self.doc_prefixes).items():
                     matches = re.findall(pattern, line_stripped, re.IGNORECASE)
                     for match in matches:
                         full_code = f"{doc_type}{match}"
@@ -217,9 +213,10 @@ class GraphBuilder:
                             cites.append(normalized)
 
             elif in_tables_section:
-                form_matches = re.findall(r'FORM\s*(\d{4}-\d+)', line_stripped, re.IGNORECASE)
+                form_prefix = self.doc_prefixes['form']
+                form_matches = re.findall(re.escape(form_prefix) + r'\s*(\d{4}-\d+)', line_stripped, re.IGNORECASE)
                 for match in form_matches:
-                    normalized = self.normalize_doc_code(f"FORM{match}")
+                    normalized = self.normalize_doc_code(f"{form_prefix}{match}")
                     if normalized not in forms:
                         forms.append(normalized)
 
@@ -432,7 +429,7 @@ class GraphBuilder:
             code_suffix = '140' + doc_code_match.group(1)
             phase = DOC_CODE_TO_PHASE.get(code_suffix, '')
 
-        if doc_name.upper().startswith('POL'):
+        if doc_name.upper().startswith(self.doc_prefixes['policy']):
             phase = '策划,申请,设计,制造,验收,使用,维护,优化'
 
         # D5-2: Apply aliases normalization to entities before returning
@@ -471,13 +468,13 @@ class GraphBuilder:
     def infer_doc_level(self, doc_name: str, title: str = "") -> int:
         """Infer document level from filename patterns."""
         doc_name_upper = doc_name.upper()
-        if doc_name_upper.startswith('POL'):
+        if doc_name_upper.startswith(self.doc_prefixes['policy']):
             return 0
-        elif doc_name_upper.startswith('PROC'):
+        elif doc_name_upper.startswith(self.doc_prefixes['procedure']):
             return 1
-        elif doc_name_upper.startswith('WORK'):
+        elif doc_name_upper.startswith(self.doc_prefixes['instruction']):
             return 2
-        elif doc_name_upper.startswith('FORM'):
+        elif doc_name_upper.startswith(self.doc_prefixes['form']):
             return 3
 
         search_text = (doc_name + " " + title).lower()
@@ -502,7 +499,8 @@ class GraphBuilder:
 
     def parse_doc_code(self, doc_name: str) -> str:
         """Extract document code from filename."""
-        match = re.match(r'^(GL[PROCB]|FORM|SR)(\d{4,8})', doc_name, re.IGNORECASE)
+        prefixes = '|'.join(re.escape(value) for value in sorted(self.doc_prefixes.values(), key=len, reverse=True))
+        match = re.match(r'^(' + prefixes + r')(\d{4,8})', doc_name, re.IGNORECASE)
         if match:
             return match.group(1).upper() + match.group(2)
         return ''
@@ -518,22 +516,23 @@ class GraphBuilder:
 
         candidates = []
 
-        if doc_code.startswith('WORK'):
-            procedure_code = 'PROC' + doc_code[3:]
+        if doc_code.startswith(self.doc_prefixes['instruction']):
+            procedure_code = self.doc_prefixes['procedure'] + doc_code[len(self.doc_prefixes['instruction']):]
             candidates.append((procedure_code, 'direct'))
             if base_code != doc_code:
-                procedure_base = 'PROC' + base_code[3:]
+                procedure_base = self.doc_prefixes['procedure'] + base_code[len(self.doc_prefixes['instruction']):]
                 candidates.append((procedure_base, 'base'))
 
-        elif doc_code.startswith('PROC'):
-            if len(doc_code) >= 5:
-                policy_code = 'POL' + doc_code[3:5] + '07'
+        elif doc_code.startswith(self.doc_prefixes['procedure']):
+            offset = len(self.doc_prefixes['procedure'])
+            if len(doc_code) >= offset + 2:
+                policy_code = self.doc_prefixes['policy'] + doc_code[offset:offset + 2] + '07'
                 candidates.append((policy_code, 'lift'))
-                if len(doc_code) >= 6:
-                    policy_code2 = 'POL' + doc_code[3:6] + '07'
+                if len(doc_code) >= offset + 3:
+                    policy_code2 = self.doc_prefixes['policy'] + doc_code[offset:offset + 3] + '07'
                     candidates.append((policy_code2, 'lift_4dig'))
 
-        elif doc_code.startswith('POL'):
+        elif doc_code.startswith(self.doc_prefixes['policy']):
             return 'ROOT_SYSTEM'
 
         for candidate, rule_type in candidates:
@@ -592,7 +591,7 @@ class GraphBuilder:
             for rel in related_docs:
                 if rel.get('type') in ['Cites', 'Parent'] and rel.get('direction') == 'forward':
                     target = rel.get('target', '')
-                    if any(x in target.upper() for x in ['POL', 'PROC']):
+                    if any(x in target.upper() for x in [self.doc_prefixes['policy'], self.doc_prefixes['procedure']]):
                         has_explicit_parent = True
                         parent_links[doc_name] = target
                         link_types[doc_name] = 'explicit'

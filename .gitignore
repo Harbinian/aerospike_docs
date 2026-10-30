@@ -1,0 +1,5 @@
+# Private anonymization policy and generated caches
+/ANONYMIZATION.local.json
+__pycache__/
+*.py[cod]
+.pytest_cache/
